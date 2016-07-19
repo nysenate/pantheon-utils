@@ -1,0 +1,9 @@
+{
+  "name": "nysenate/terminus-plugin",
+  "description": "A simple NYSenate plugin for Terminus",
+  "homepage": "https://github.com/nysenate/terminus-plugin",
+  "license": "GPL",
+  "require": {
+    "php": ">=5.6"
+  }
+}
