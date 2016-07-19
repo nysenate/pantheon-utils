@@ -16,7 +16,7 @@ environment variable to point to the correct directory.
 
 This command can be invoked by running:
 ```
-terminus site replica-info [options]`
+terminus site replica-info [options]
 ```
 
 Use `terminus help site` for a listing of all 'site' subcommands.
