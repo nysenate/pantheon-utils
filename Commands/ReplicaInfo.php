@@ -4,6 +4,7 @@
  * Author: Ken Zalewski
  * Organization: New York State Senate
  * Date: 2016-07-19
+ * Revised: 2016-07-25 - added --looker option
  *
  * ReplicaInfo.php - A Terminus plugin that adds a new "replica-info"
  * subcommand to the "site" command of the Terminus CLI.
@@ -53,6 +54,9 @@ class ReplicaInfoCommand extends TerminusCommand
    * [--field=<field>]
    * : specific field to return
    *
+   * [--looker]
+   * : this option returns the fields in Looker format
+   *
    * @subcommand replica-info
    * @alias ri
    */
@@ -96,6 +100,20 @@ class ReplicaInfoCommand extends TerminusCommand
     }
 
     $mysql_params = self::getMysqlParams($dbserver);
+
+    // If the --looker option was specified, then rewrite the MySQL parameters
+    // to be in a format that can be used as input to the Looker API.
+    if (isset($assoc_args['looker'])) {
+      $mysql_params = [
+        'name' => 'mysql_replica',
+        'host' => $mysql_params['mysql_host'],
+        'port' => $mysql_params['mysql_port'],
+        'username' => $mysql_params['mysql_username'],
+        'password' => $mysql_params['mysql_password'],
+        'database' => $mysql_params['mysql_database'],
+        'dialect_name' => 'mysql'
+      ];
+    }
 
     if (isset($assoc_args['field'])) {
       $field = $assoc_args['field'];
