@@ -59,6 +59,7 @@ done
 
 if [ ! "$machine_token" ]; then
   echo "$prog: machine_token must be specified using either command line or config file [$terminus_cfg_file]" >&2
+  exit 1
 elif [ ! "$client_id" ]; then
   echo "$prog: client_id must be specified using either command line or config file [$looker_cfg_file]" >&2
   exit 1
