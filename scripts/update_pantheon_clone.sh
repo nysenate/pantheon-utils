@@ -13,12 +13,12 @@
 prog=`basename $0`
 terminus_cfg_file=/etc/terminus_token.txt
 timestamp=`date +%Y%m%d%H%M%S`
-sqlfile="/data/nysenate_backup_$timestamp.sql.gz"
+outfile="/tmp/nysenate_backup_$timestamp.sql.gz"
 machine_token=
 download_only=0
 
 usage() {
-  echo "Usage: $prog [--machine-token TOK]" >&2
+  echo "Usage: $prog [--machine-token TOK] [--output-file file] [--download-only]" >&2
 }
 
 [ -r "$terminus_cfg_file" ] && machine_token=`cat "$terminus_cfg_file"` || echo "$prog: Warning: Terminus token file [$terminus_cfg_file] not found" >&2
@@ -26,6 +26,7 @@ usage() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --machine-token|-t) shift; machine_token="$1" ;;
+    --output-file|-f) shift; outfile="$1" ;;
     --download-only|-d) download_only=1 ;;
     --help) usage; exit 0 ;;
     *) echo "$prog: $1: Invalid option" >&2; usage; exit 1 ;;
@@ -55,7 +56,7 @@ if ! $terminus auth whoami; then
 fi
 
 echo "Retrieving the latest SQL backup from Pantheon"
-$terminus site backups get --site=ny-senate --env=live --element=db --to="$sqlfile" --latest
+$terminus site backups get --site=ny-senate --env=live --element=db --to="$outfile" --latest
 
 if [ $? -ne 0 ]; then
   echo "$prog: Unable to retrieve the latest SQL backup from Pantheon" >&2
@@ -64,9 +65,9 @@ fi
 
 if [ $download_only -ne 1 ]; then
   echo "Refreshing local database clone from SQL backup"
-  gunzip -c "$sqlfile" | mysql website_looker
+  gunzip -c "$outfile" | mysql website_looker
 else
-  echo "Skipping the local database refresh; downloaded SQL file is [$sqlfile]"
+  echo "Skipping the local database refresh; downloaded SQL file is [$outfile]"
 fi
 
 exit $?
