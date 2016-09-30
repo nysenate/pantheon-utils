@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do
     --connection-name|-c) shift; connection_name="$1" ;;
     --force-update|-f) force_update=1 ;;
     --no-update|-n) no_update=1 ;;
-    --output-file|-o) shift; outfile="$1" ;;
+    --out*|-o) shift; outfile="$1" ;;
     --help) usage; exit 0 ;;
     *) echo "$prog: $1: Invalid option" >&2; usage; exit 1 ;;
   esac
@@ -84,7 +84,7 @@ if [ ! "$jq" ]; then
   exit 1
 fi
 
-$script_dir/save_pantheon_db_info.sh --replica -f $outfile
+$script_dir/save_pantheon_db_info.sh --replica --format looker -o $outfile
 
 rc=$?
 if [ $rc -eq 1 ]; then
