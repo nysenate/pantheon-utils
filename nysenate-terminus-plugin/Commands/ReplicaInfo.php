@@ -5,6 +5,7 @@
  * Organization: New York State Senate
  * Date: 2016-07-19
  * Revised: 2016-07-25 - added --looker option
+ * Revised: 2017-02-08 - fixed class path for Sites class
  *
  * ReplicaInfo.php - A Terminus plugin that adds a new "replica-info"
  * subcommand to the "site" command of the Terminus CLI.
@@ -23,7 +24,7 @@
 namespace Terminus\Commands;
 
 use Terminus\Commands\TerminusCommand;
-use Terminus\Models\Collections\Sites;
+use Terminus\Collections\Sites;
 
 /**
  *
