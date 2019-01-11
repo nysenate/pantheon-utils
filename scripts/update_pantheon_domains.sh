@@ -8,27 +8,37 @@
 # Organization: New York State Senate
 # Date: 2018-01-05
 # Revised: 2018-01-08 - better logic for detecting senator subdomains
+# Revised: 2019-01-11 - converted from Terminus 0.13 to Terminus 1.x
 # 
 
 prog=`basename $0`
-terminus_cfg_file=/etc/terminus_token.txt
+script_dir=`dirname $0`
+
 domain_exclude_file=/etc/pantheon_domain_exclude.cfg
 website_url=https://www.nysenate.gov/senators-json
 dry_run=0
 keep_tmpfile=0
-machine_token=
-panth_site="ny-senate"
-panth_env="live"
 panth_tmpfile="/tmp/pantheon_domains_$$.tmp"
 website_tmpfile="/tmp/website_domains_$$.tmp"
 diff_tmpfile="/tmp/domain_diff_$$.tmp"
 exclude_tmpfile="/tmp/domain_excludes_$$.tmp"
 
 
+. $script_dir/terminus_funcs.sh
+
+
+# Confirm that the "jq" JSON parser is installed.
+if ! which jq >/dev/null 2>&1; then
+  echo "$prog: Please install Jq before running this script" >&2
+  exit 1
+fi
+
+
 usage() {
-  echo "Usage: $prog [--dry-run|-n] [--keep-tmpfile|-k] [--machine-token|-t mtoken] [--site|-S sitename] [--env|-e envname]" >&2
+  echo "Usage: $prog [--dry-run|-n] [--verbose|-v] [--keep-tmpfile|-k] [--machine-token|-t mtoken] [--site|-S sitename] [--env|-e envname]" >&2
   echo "  where:" >&2
   echo "    dry-run prevents any changes from being made at Pantheon" >&2
+  echo "    verbose outputs the assembled Terminus commands" >&2
   echo "    keep-tmpfile inhibits the deletion of the temporary files" >&2
   echo "    mtoken is the Terminus machine token" >&2
   echo "    sitename is the Pantheon sitename, such as 'ny-senate'" >&2
@@ -42,46 +52,28 @@ cleanup() {
 }
 
 
-[ -r "$terminus_cfg_file" ] && machine_token=`cat "$terminus_cfg_file"` || echo "$prog: Warning: Terminus token file [$terminus_cfg_file] not found" >&2
+# Attempt to load the Terminus machine token from the config file
+load_terminus_machine_token
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run|-n) dry_run=1 ;;
+    --verbose|-v) set_terminus_debug_on ;;
     --keep-tmpfile|-k) keep_tmpfile=1 ;;
-    --machine-token|-t) shift; machine_token="$1" ;;
-    --site|-S) shift; panth_site="$1" ;;
-    --env|-e) shift; panth_env="$1" ;;
+    --machine-token|-t) shift; set_terminus_machine_token "$1" ;;
+    --site|-S) shift; set_terminus_site "$1" ;;
+    --env|-e) shift; set_terminus_env "$1" ;;
     --help) usage; exit 0 ;;
     *) echo "$prog: $1: Invalid option" >&2; usage; exit 1 ;;
   esac
   shift
 done
 
-if [ ! "$machine_token" ]; then
-  echo "$prog: machine_token must be specified using either command line or config file [$terminus_cfg_file]" >&2
+if ! auth_login_terminus; then
+  echo "$prog: Unable to log in to Terminus; aborting" >&2
   exit 1
 fi
 
-# This script requires two specialized executables: terminus and jq
-terminus=`which terminus 2>/dev/null`
-jq=`which jq 2>/dev/null`
-
-if [ ! "$terminus" ]; then
-  echo "$prog: Please install Terminus before running this script" >&2
-  exit 1
-elif [ ! "$jq" ]; then
-  echo "$prog: Please install Jq before running this script" >&2
-  exit 1
-fi
-
-echo "Checking Terminus login status"
-if ! $terminus auth whoami; then
-  echo "$prog: Warning: You are not logged in to Pantheon; trying now..."
-  if ! $terminus auth login --machine-token="$machine_token"; then
-    echo "$prog: Unable to log in to Terminus; aborting" >&2
-    exit 1
-  fi
-fi
 
 # Grab all of the senator subdomains from Pantheon.
 # This is not an exact science, since it is difficult to differentiate
@@ -90,7 +82,7 @@ fi
 # For now, I explicitly ignore anything that does not end in "nysenate.gov",
 # plus the following:  nysenate.gov, www.nysenate.gov, open.nysenate.gov
 echo "Retrieving current list of nysenate.gov domains from Pantheon"
-$terminus site hostnames list --site="$panth_site" --env="$panth_env" --format=json | jq -r '.[].domain' | grep 'nysenate.gov$' | sort -u > $panth_tmpfile
+exec_terminus domain:list --format=json | jq -r 'keys[]' | grep 'nysenate.gov$' | sort -u > $panth_tmpfile
 
 if [ $? -ne 0 ]; then
   echo "$prog: Unable to retrieve Pantheon domain list" >&2
@@ -130,7 +122,7 @@ if [ "$domainlist" ]; then
   if [ $dry_run -ne 1 ]; then
     for d in $domainlist; do
       echo "Adding domain [$d] to Pantheon"
-      $terminus site hostnames add --site="$panth_site" --env="$panth_env" --hostname="$d"
+      exec_terminus domain:add "$d"
     done
   else
     echo "Skipping the addition of domains to Pantheon, since dry-run is on"
@@ -146,7 +138,7 @@ if [ "$domainlist" ]; then
   if [ $dry_run -ne 1 ]; then
     for d in $domainlist; do
       echo "Removing domain [$d] from Pantheon"
-      $terminus site hostnames remove --site="$panth_site" --env="$panth_env" --hostname="$d"
+      exec_terminus domain:remove "$d"
     done
   else
     echo "Skipping the removal of domains from Pantheon, since dry-run is on"

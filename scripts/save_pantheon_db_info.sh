@@ -8,6 +8,7 @@
 # Organization: New York State Senate
 # Date: 2016-09-02
 # Revised: 2016-09-30
+# Revised: 2019-01-11 - converted from Terminus 0.13 to Terminus 1.x
 # 
 # NOTE: This script uses a non-standard return code.  Return codes are:
 #          0 = success; connection info retrieved, but no change since last run
@@ -18,26 +19,34 @@
 #
 
 prog=`basename $0`
-terminus_cfg_file=/etc/terminus_token.txt
-machine_token=
-panth_site="ny-senate"
-panth_env="live"
-terminus_cmd="connection-info"
+script_dir=`dirname $0`
+terminus_cmd="connection:info"
 db_type="master"
 outformat="raw"
 outfile=
 
 
+. $script_dir/terminus_funcs.sh
+
+
+# Confirm that the "jq" JSON parser is installed.
+if ! which jq >/dev/null 2>&1; then
+  echo "$prog: Please install Jq before running this script" >&2
+  exit 1
+fi
+
+
 usage() {
-  echo "Usage: $prog [--machine-token mtoken] [--site sitename] [--env envname] [--master | --replica] [--format {raw|full|looker|bluebird}] [--no-compare] [--output-file output_file]" >&2
+  echo "Usage: $prog [--master | --replica] [--format {raw|full|looker|bluebird}] [--no-compare] [--output-file output_file] [--verbose|-v] [--machine-token mtoken] [--site sitename] [--env envname]" >&2
   echo "  where:" >&2
-  echo "    mtoken is the Terminus machine token" >&2
-  echo "    sitename is the Pantheon sitename, such as 'ny-senate'" >&2
-  echo "    envname is the Pantheon environment, such as 'live' or 'dev'" >&2
   echo "    --master retrieves the database master connection info" >&2
   echo "    --replica retrieves the database replica connection info" >&2
   echo "    output_format is one of RAW, FULL, LOOKER, BLUEBIRD" >&2
   echo "    output_file is the file to which db params should be saved" >&2
+  echo "    verbose outputs the assembled Terminus command" >&2
+  echo "    mtoken is the Terminus machine token" >&2
+  echo "    sitename is the Pantheon sitename, such as 'ny-senate'" >&2
+  echo "    envname is the Pantheon environment, such as 'live' or 'dev'" >&2
 }
 
 cleanup() {
@@ -45,37 +54,46 @@ cleanup() {
 }
 
 format_output_raw() {
-  $jq 'to_entries | map(select(.key[0:6]=="mysql_")) | from_entries'
+  jq 'to_entries | map(select(.key[0:6]=="mysql_")) | from_entries'
 }
 
 format_output_full() {
-  $jq .
+  jq .
 }
 
 format_output_looker() {
-  $jq '{host:.mysql_host, port:.mysql_port, username: .mysql_username, password:.mysql_password, database:.mysql_database}'
+  jq '{host:.mysql_host, port:.mysql_port, username: .mysql_username, password:.mysql_password, database:.mysql_database}'
 }
 
 format_output_bluebird() {
-  $jq -r '"host="+.mysql_host, "port="+(.mysql_port|tostring), "user="+.mysql_username, "pass="+.mysql_password, "name="+.mysql_database'
+  jq -r '"host="+.mysql_host, "port="+(.mysql_port|tostring), "user="+.mysql_username, "pass="+.mysql_password, "name="+.mysql_database'
 }
 
-[ -r "$terminus_cfg_file" ] && machine_token=`cat "$terminus_cfg_file"` || echo "$prog: Warning: Terminus token file [$terminus_cfg_file] not found" >&2
+
+# Attempt to load the Terminus machine token from the config file
+load_terminus_machine_token
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --machine-token|-t) shift; machine_token="$1" ;;
-    --site|-S) shift; panth_site="$1" ;;
-    --env|-e) shift; panth_env="$1" ;;
-    --master|-m) db_type="master"; terminus_cmd="connection-info" ;;
-    --replica|--slave|-r|-s) db_type="replica"; terminus_cmd="replica-info" ;;
+    --master|-m) db_type="master"; terminus_cmd="connection:info" ;;
+    --replica|--slave|-r|-s) db_type="replica"; terminus_cmd="replica:info" ;;
     --format|-f) shift; outformat=`echo $1 | tr '[:upper:]' '[:lower:]'` ;;
     --out*|--file|-o) shift; outfile="$1" ;;
+    --verbose|-v) set_terminus_debug_on ;;
+    --machine-token|-t) shift; set_terminus_machine_token "$1" ;;
+    --site|-S) shift; set_terminus_site "$1" ;;
+    --env|-e) shift; set_terminus_env "$1" ;;
     --help) usage; exit 0 ;;
     *) echo "$prog: $1: Invalid option" >&2; usage; exit 1 ;;
   esac
   shift
 done
+
+if ! auth_login_terminus; then
+  echo "$prog: Unable to log in to Terminus; aborting" >&2
+  exit 1
+fi
+
 
 # Check for existence of formatting function
 format_func="format_output_$outformat"
@@ -85,7 +103,8 @@ if ! type -p "$format_func"; then
 fi
 
 # Generate basename of file from database type.
-filebase="pantheon_${panth_env}_${db_type}_db_info.json"
+site_env=`get_terminus_site_env`
+filebase="pantheon_${site_env}_${db_type}_db_info.json"
 
 # If output filename was not provided, generate it.
 [ "$outfile" ] || outfile="/var/run/$filebase"
@@ -93,36 +112,11 @@ filebase="pantheon_${panth_env}_${db_type}_db_info.json"
 # Generate temp file using basename along with process ID.
 tmpfile="/tmp/$filebase.$$"
 
-if [ ! "$machine_token" ]; then
-  echo "$prog: machine_token must be specified using either command line or config file [$terminus_cfg_file]" >&2
-  exit 1
-fi
-
-# This script requires two specialized executables: terminus and jq
-terminus=`which terminus 2>/dev/null`
-jq=`which jq 2>/dev/null`
-
-if [ ! "$terminus" ]; then
-  echo "$prog: Please install Terminus before running this script" >&2
-  exit 1
-elif [ ! "$jq" ]; then
-  echo "$prog: Please install Jq before running this script" >&2
-  exit 1
-fi
-
-echo "Checking Terminus login status"
-if ! $terminus auth whoami; then
-  echo "$prog: Warning: You are not logged in to Pantheon; trying now..."
-  if ! $terminus auth login --machine-token="$machine_token"; then
-    echo "$prog: Unable to log in to Terminus; aborting" >&2
-    exit 1
-  fi
-fi
 
 echo "Retrieving Pantheon MySQL $db_type connection info"
 # Set pipefail in order to detect failure of the Terminus command
 set -o pipefail
-$terminus site $terminus_cmd --site="$panth_site" --env="$panth_env" --format=json | $format_func > "$tmpfile"
+exec_terminus $terminus_cmd --format=json --fields="*" | $format_func > "$tmpfile"
 
 if [ $? -ne 0 ]; then
   echo "$prog: Unable to retrieve Pantheon MySQL $db_type connection info" >&2

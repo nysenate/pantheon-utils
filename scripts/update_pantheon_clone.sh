@@ -8,55 +8,48 @@
 # Organization: New York State Senate
 # Date: 2016-07-12
 # Revised: 2016-08-10
+# Revised: 2019-01-11 - converted from Terminus 0.13 to Terminus 1.x
 #
 
 prog=`basename $0`
-terminus_cfg_file=/etc/terminus_token.txt
+script_dir=`dirname $0`
 timestamp=`date +%Y%m%d%H%M%S`
 outfile="/tmp/nysenate_backup_$timestamp.sql.gz"
-machine_token=
 download_only=0
 
+
+. $script_dir/terminus_funcs.sh
+
+
 usage() {
-  echo "Usage: $prog [--machine-token TOK] [--output-file file] [--download-only]" >&2
+  echo "Usage: $prog [--output-file file] [--download-only] [--verbose|-v] [--machine-token token] [--site|-S sitename] [--env|-e envname]" >&2
 }
 
-[ -r "$terminus_cfg_file" ] && machine_token=`cat "$terminus_cfg_file"` || echo "$prog: Warning: Terminus token file [$terminus_cfg_file] not found" >&2
+
+# Attempt to load the Terminus machine token from the config file
+load_terminus_machine_token
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --machine-token|-t) shift; machine_token="$1" ;;
     --output-file|-f) shift; outfile="$1" ;;
     --download-only|-d) download_only=1 ;;
+    --verbose|-v) set_terminus_debug_on ;;
+    --machine-token|-t) shift; set_terminus_machine_token "$1" ;;
+    --site|-S) shift; set_terminus_site "$1" ;;
+    --env|-e) shift; set_terminus_env "$1" ;;
     --help) usage; exit 0 ;;
     *) echo "$prog: $1: Invalid option" >&2; usage; exit 1 ;;
   esac
   shift
 done
 
-if [ ! "$machine_token" ]; then
-  echo "$prog: machine_token must be specified using either command line or conf
-ig file [$terminus_cfg_file]" >&2
+if ! auth_login_terminus; then
+  echo "$prog: Unable to log in to Terminus; aborting" >&2
   exit 1
-fi
-
-terminus=`which terminus 2>/dev/null`
-if [ ! "$terminus" ]; then
-  echo "$prog: Please install Terminus before running this script" >&2
-  exit 1
-fi
-
-echo "Checking Terminus login status"
-if ! $terminus auth whoami; then
-  echo "$prog: Warning: You are not logged in to Pantheon; trying now..."
-  if ! $terminus auth login --machine-token="$machine_token"; then
-    echo "$prog: Unable to log in to Terminus; aborting" >&2
-    exit 1
-  fi
 fi
 
 echo "Retrieving the latest SQL backup from Pantheon"
-$terminus site backups get --site=ny-senate --env=live --element=db --to="$outfile" --latest
+exec_terminus backup:get --element=db --to="$outfile"
 
 if [ $? -ne 0 ]; then
   echo "$prog: Unable to retrieve the latest SQL backup from Pantheon" >&2

@@ -77,9 +77,8 @@ elif [ ! "$outfile" ]; then
   exit 1
 fi
 
-jq=`which jq 2>/dev/null`
-
-if [ ! "$jq" ]; then
+# Confirm that the "jq" JSON parser is installed.
+if ! which jq >/dev/null 2>&1; then
   echo "$prog: Please install Jq before running this script" >&2
   exit 1
 fi
@@ -127,7 +126,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-ltok=`$jq -r '.access_token' "$looker_tmpfile"`
+ltok=`jq -r '.access_token' "$looker_tmpfile"`
 
 echo "Looker API token is [$ltok]"
 
@@ -150,7 +149,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Response:"
-$jq '.' "$looker_tmpfile"
+jq '.' "$looker_tmpfile"
 
 echo "Logging out of Looker API"
 # HTTP DELETE is used by Looker API to invalidate an access token
