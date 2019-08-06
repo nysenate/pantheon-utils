@@ -8,6 +8,15 @@ Terminus is the main CLI utility offered by Pantheon to manage customer
 sites and environments.  Since version 0.10.3, Terminus supports the use
 of plugins to extend its functionality.
 
+Requirements
+------------
+This plugin will work with versions of Terminus that are prior to 1.0, such
+as 0.10.x through 0.13.x.
+
+For Terminus 1.0 and above, the terminus-replica-plugin repo should be used.
+It can be found at:
+https://github.com/terminus-plugin-project/terminus-replica-plugin
+
 Installation
 ------------
 To install this plugin, move the entire `nysenate-terminus-plugin`
