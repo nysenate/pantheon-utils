@@ -9,6 +9,7 @@
 # Date: 2018-01-05
 # Revised: 2018-01-08 - better logic for detecting senator subdomains
 # Revised: 2019-01-11 - converted from Terminus 0.13 to Terminus 1.x
+# Revised: 2023-01-19 - trim leading/trailing spaces from shortnames
 # 
 
 prog=`basename $0`
@@ -104,7 +105,7 @@ fi
 # Create the full list of senator subdomains (including "www." prefixed
 # variants), which will be used as the master list to use for comparison.
 echo "Retrieving current list of senators from website"
-curl -f -s "$website_url" | jq -r '.[].short_name' | awk '{ print $0 ".nysenate.gov"; print "www." $0 ".nysenate.gov"; }' | sort -u > $website_tmpfile
+curl -f -s "$website_url" | jq -r '.[].short_name|gsub("^ +| +$"; "")' | awk '{ print $0 ".nysenate.gov"; print "www." $0 ".nysenate.gov"; }' | sort -u > $website_tmpfile
 
 if [ $? -ne 0 ]; then
   echo "$prog: Unable to retrieve website senator list" >&2
