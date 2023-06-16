@@ -7,11 +7,12 @@
 # Author: Ken Zalewski
 # Organization: New York State Senate
 # Date: 2019-01-11 - initial creation
+# Revised: 2023-06-16 - update the default site from ny-senate to nysenate-2022
 # 
 
 terminus_cfg_file=/etc/terminus_token.txt
 terminus_token=
-terminus_site=ny-senate
+terminus_site=nysenate-2022
 terminus_env=live
 terminus_debug=0
 

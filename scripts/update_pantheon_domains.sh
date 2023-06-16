@@ -10,15 +10,17 @@
 # Revised: 2018-01-08 - better logic for detecting senator subdomains
 # Revised: 2019-01-11 - converted from Terminus 0.13 to Terminus 1.x
 # Revised: 2023-01-19 - trim leading/trailing spaces from shortnames
+# Revised: 2023-06-15 - added --delete-all option
 # 
 
 prog=`basename $0`
 script_dir=`dirname $0`
 
 domain_exclude_file=/etc/pantheon_domain_exclude.cfg
-website_url=https://www.nysenate.gov/senators-json
+website_url=https://www.nysenate.gov/senators.json
 dry_run=0
 keep_tmpfile=0
+delete_all=0
 panth_tmpfile="/tmp/pantheon_domains_$$.tmp"
 website_tmpfile="/tmp/website_domains_$$.tmp"
 diff_tmpfile="/tmp/domain_diff_$$.tmp"
@@ -41,6 +43,7 @@ usage() {
   echo "    dry-run prevents any changes from being made at Pantheon" >&2
   echo "    verbose outputs the assembled Terminus commands" >&2
   echo "    keep-tmpfile inhibits the deletion of the temporary files" >&2
+  echo "    delete-all removes all domains from an environment" >&2
   echo "    mtoken is the Terminus machine token" >&2
   echo "    sitename is the Pantheon sitename, such as 'ny-senate'" >&2
   echo "    envname is the Pantheon environment, such as 'live' or 'dev'" >&2
@@ -61,6 +64,7 @@ while [ $# -gt 0 ]; do
     --dry-run|-n) dry_run=1 ;;
     --verbose|-v) set_terminus_debug_on ;;
     --keep-tmpfile|-k) keep_tmpfile=1 ;;
+    --delete-all) delete_all=1 ;;
     --machine-token|-t) shift; set_terminus_machine_token "$1" ;;
     --site|-S) shift; set_terminus_site "$1" ;;
     --env|-e) shift; set_terminus_env "$1" ;;
@@ -75,13 +79,42 @@ if ! auth_login_terminus; then
   exit 1
 fi
 
+if [ $delete_all -eq 1 ]; then
+  echo "Retrieving current list of all domains from Pantheon"
+  domainlist=`exec_terminus domain:list --format=json | jq -r 'keys[]' | sort -u`
+  if [ $? -ne 0 ]; then
+    echo "$prog: Unable to retrieve Pantheon domain list" >&2
+    cleanup
+    exit 1
+  fi
+  echo "Domains to be removed from Pantheon:"
+  echo "$domainlist"
+  echo
+  echo -n "Are you sure that you want to delete these domains ([N]/y)? "
+  read ch
+  case "$ch" in
+    [yY]*) ;;
+    *) echo "Aborting."; cleanup; exit 0 ;;
+  esac
+  if [ $dry_run -ne 1 ]; then
+    for d in $domainlist; do
+      echo "Removing domain [$d] from Pantheon"
+      exec_terminus domain:remove "$d"
+    done
+  else
+    echo "Skipping the removal of domains from Pantheon, since dry-run is on"
+  fi
+  cleanup
+  exit 0
+fi
 
 # Grab all of the senator subdomains from Pantheon.
 # This is not an exact science, since it is difficult to differentiate
 # between a senator domain (eg. klein.nysenate.gov) and a non-senator
 # domain (eg. open.nysenate.gov).
-# For now, I explicitly ignore anything that does not end in "nysenate.gov",
-# plus the following:  nysenate.gov, www.nysenate.gov, open.nysenate.gov
+# First, explicitly ignore anything that does not end in "nysenate.gov".
+# Then, use the exclude file to exclude any other domains, such as:
+#   nysenate.gov, www.nysenate.gov, open.nysenate.gov
 echo "Retrieving current list of nysenate.gov domains from Pantheon"
 exec_terminus domain:list --format=json | jq -r 'keys[]' | grep 'nysenate.gov$' | sort -u > $panth_tmpfile
 
